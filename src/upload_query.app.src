@@ -1,0 +1,17 @@
+{application, upload_query,
+ [
+   {description, ""},
+   {vsn, "1"},
+   {registered, []},
+   {applications, [
+     kernel,
+     stdlib,
+     jiffy,
+     cowboy,
+     cowboy_session,
+     emodel,
+     pgapp
+   ]},
+   {mod, { upload_query_app, []}},
+   {env, []}
+ ]}.
