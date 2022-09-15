@@ -28,6 +28,7 @@ init_per_suite(Config) ->
   Config.
 
 end_per_suite(_Config) ->
+  ok = persist:init_db(),
   ok.
 
 %%%_* Test cases ===============================================================

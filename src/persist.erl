@@ -7,8 +7,11 @@
 %% API
 -export([ add_content/5
         , file_exists/2
+        , get_id/2
+        , get_is_payable/1
         , mark_file_written/1
         , store_file/4
+        , read_file/3
         ]).
 
 %% Utils
@@ -17,11 +20,25 @@
         , all_keys/0
         ]).
 
--type seq_id() :: integer().
--define(POOL, pgdb).
+%% Types
+-type content_id() :: integer().
+-type sender_id() :: integer().
+-type file_type() :: string().
+-type file_name() :: string().
+-type receiver_id() :: integer().
+-type is_payable() :: boolean().
+-type file_data() :: binary().
 
--export_type([ seq_id/0
+-export_type([ content_id/0
+             , sender_id/0
+             , receiver_id/0
+             , file_type/0
+             , file_name/0
+             , file_data/0
+             , is_payable/0
              ]).
+
+-define(POOL, pgdb).
 
 -spec init_db() -> ok.
 init_db() ->
@@ -49,11 +66,8 @@ init_db() ->
        "),
     ok.
 
--spec add_content(upload_handler:sender_id(),
-                  upload_handler:file_type(),
-                  upload_handler:file_name(),
-                  upload_handler:receiver_id(),
-                  upload_handler:is_payable()) -> {ok, seq_id()} | error.
+-spec add_content(sender_id(), file_type(), file_name(), receiver_id(), is_payable()) ->
+  {ok, content_id()} | error.
 add_content(SenderId, FileType, FileName, ReceiverId, IsPayable) ->
     case pgapp:equery(?POOL,
                       "INSERT INTO content(sender_id, file_type, file_name, receiver_id, is_payable)
@@ -65,14 +79,14 @@ add_content(SenderId, FileType, FileName, ReceiverId, IsPayable) ->
         _ -> error % TODO: alarm? return reason?
     end.
 
--spec mark_file_written(seq_id()) -> ok | error.
+-spec mark_file_written(content_id()) -> ok | error.
 mark_file_written(Id) ->
     case pgapp:equery(?POOL, "UPDATE content SET file_written=TRUE WHERE id=$1", [Id]) of
         {ok, Count} when Count =:= 1 -> ok;
         _ -> error % TODO: Handle gracefully? Alarm?
     end.
 
--spec file_exists(upload_handler:sender_id(), upload_handler:file_name()) -> boolean().
+-spec file_exists(sender_id(), file_name()) -> boolean().
 file_exists(SenderId, FileName) ->
     SQL = "SELECT id FROM content WHERE sender_id=$1 AND file_name=$2 AND file_written=TRUE",
     Params = [SenderId, list_to_binary(FileName)],
@@ -90,6 +104,12 @@ all_keys() ->
     _ -> []
   end.
 
+-spec try_read_id(content_id()) ->                               {ok, #{sender_id := sender_id()
+                                    , file_type := file_type()
+                                    , file_name := file_name()
+                                    , receiver_id := receiver_id()
+                                    , is_payable := is_payable()}} |
+                               none.
 try_read_id(Id) ->
     SQL = "SELECT id, sender_id, file_type, file_name, receiver_id, is_payable "
           "FROM content "
@@ -107,6 +127,27 @@ try_read_id(Id) ->
             none
     end.
 
+%% TODO: Assumption on unique Sender<->Receiver sets here
+-spec get_id(sender_id(), receiver_id()) -> {ok, content_id()} | {error, atom()}.
+get_id(SenderId, ReceiverId) ->
+  case pgapp:equery(?POOL, "SELECT id FROM content WHERE sender_id=$1 AND receiver_id=$2",
+                    [SenderId, ReceiverId]) of
+    {ok, _, []} -> {error, none};
+    {ok, _, [{Id}]} -> {ok, Id};
+    {ok, _, List} when length(List) > 1 -> {error, multiple_ids};
+    _ -> {error, other}
+  end.
+
+-spec get_is_payable(content_id()) -> {ok, boolean()} | {error, atom()}.
+get_is_payable(ContentId) ->
+  case pgapp:equery(?POOL, "SELECT is_payable FROM content WHERE id=$1", [ContentId]) of
+    {ok, _, []} -> {error, none};
+    {ok, _, [{Bool}]} -> {ok, Bool};
+    {ok, _, List} when length(List) > 1 -> {error, multiple_ids};
+    _ -> {error, other}
+  end.
+
+-spec get_receiver_ids(sender_id()) -> [{content_id(), receiver_id()}] | none.
 get_receiver_ids(SenderId) ->
     case pgapp:equery(?POOL, "SELECT id, receiver_id FROM content WHERE sender_id=$1", [SenderId]) of
         {ok, _, []} -> none;
@@ -114,7 +155,8 @@ get_receiver_ids(SenderId) ->
         _ -> none
     end.
 
-%% TODO: decide on storage solution, for now save to disk and let cronjob transfer
+%% TODO: decide on storage solution, for now save to disk
+-spec store_file(sender_id(), receiver_id(), file_name(), file_data()) -> ok.
 store_file(SenderId, ReceiverId, FileName, FileData) ->
   {ok, App} = application:get_application(),
   FilePath = filename:join([ application:get_env(App, file_store_base_path, "/tmp")
@@ -124,3 +166,13 @@ store_file(SenderId, ReceiverId, FileName, FileData) ->
                            ]),
   filelib:ensure_dir(FilePath),
   ok = file:write_file(FilePath, FileData).
+
+-spec read_file(sender_id(), receiver_id(), file_name()) -> {ok, file_data()} | {error, atom()}.
+read_file(SenderId, ReceiverId, FileName) ->
+  {ok, App} = application:get_application(),
+  FilePath = filename:join([ application:get_env(App, file_store_base_path, "/tmp")
+                           , integer_to_list(SenderId)
+                           , integer_to_list(ReceiverId)
+                           , FileName
+                           ]),
+  file:read_file(FilePath).

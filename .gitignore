@@ -3,6 +3,5 @@ ct_run/
 *.iml
 _build/
 *.log
-rebar.lock
 erl_crash.dump
 test/*.beam

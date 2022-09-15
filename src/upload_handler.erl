@@ -6,34 +6,20 @@
         ]).
 
 %% Types
--type sender_id() :: integer().
--type file_type() :: string().
--type file_name() :: string().
--type receiver_id() :: integer().
--type is_payable() :: boolean().
--type file_data() :: binary().
 
--type init_map() :: #{sender_id => sender_id()
-                    , file_type => file_type()
-                    , file_name => file_name()
-                    , receiver_id => receiver_id()
-                    , is_payable => is_payable()
-                    , file_data => file_data()}.
+-type init_map() :: #{sender_id => persist:sender_id()
+                    , file_type => persist:file_type()
+                    , file_name => persist:file_name()
+                    , receiver_id => persist:receiver_id()
+                    , is_payable => persist:is_payable()
+                    , file_data => persist:file_data()}.
 
--type result_map() :: #{sender_id := integer()
-                      , file_type := string()
-                      , file_name := string()
-                      , receiver_id := integer()
-                      , is_payable := boolean()
-                      , file_data := binary()}.
-
--export_type([ sender_id/0
-             , receiver_id/0
-             , file_type/0
-             , file_name/0
-             , file_data/0
-             , is_payable/0
-             ]).
+-type result_map() :: #{sender_id := persist:sender_id()
+                      , file_type := persist:file_type()
+                      , file_name := persist:file_name()
+                      , receiver_id := persist:receiver_id()
+                      , is_payable := persist:is_payable()
+                      , file_data := persist:file_data()}.
 
 -spec init(cowboy_req:req(), any()) -> {ok, cowboy_req:req(), any()}.
 init(Req0 = #{method := <<"GET">>}, State) ->
@@ -41,6 +27,7 @@ init(Req0 = #{method := <<"GET">>}, State) ->
   {ok, Req, State};
 init(Req0 = #{method := <<"POST">>}, State) ->
     %% TODO: Add audit logging
+    %% TODO: Add authentication/authorization?
     {Req1, Result} = acc_multipart(Req0, maps:new()),
     case valid_call(Result) of
         true ->
@@ -87,7 +74,7 @@ stream_file(Req, Acc0) ->
 %% -------------------------------------------------------------------------------------------------
 %% Storage
 
--spec store_result(result_map()) -> persist:seq_id().
+-spec store_result(result_map()) -> persist:content_id().
 store_result(#{sender_id := SenderId,
                file_type := FileType,
                file_name := FileName,
@@ -121,7 +108,7 @@ valid_call(Result) ->
     maps:is_key(file_name, Result) andalso
     %% TODO: Is any file ok to store?
     maps:is_key(file_data, Result) andalso
-    %% TODO: Should this be allowed? Overwrite or store duplicate files?
+    %% TODO: Should this be allowed? Overwrite or store duplicate files? Based on receiver_id?
     case persist:file_exists(maps:get(sender_id, Result), maps:get(file_name, Result)) of
         false -> true;
         true -> false
