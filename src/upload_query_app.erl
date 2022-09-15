@@ -11,8 +11,8 @@
 
 start(_StartType, _StartArgs) ->
     Dispatch = cowboy_router:compile([         
-            {'_', [
-                {"/upload", upload_handler, []}
+            {'_', [ {"/upload", upload_handler, []}
+                  , {"/content", content_handler, []}
             ]}
     ]),     
     {ok, _} = cowboy:start_clear(my_http_listener,
