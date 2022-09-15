@@ -6,7 +6,7 @@
 
 %% API
 -export([ add_content/5
-        , file_exists/2
+        , file_exists/3
         , get_id/2
         , get_is_payable/1
         , mark_file_written/1
@@ -24,7 +24,7 @@
 -type content_id() :: integer().
 -type sender_id() :: integer().
 -type file_type() :: string().
--type file_name() :: string().
+-type file_name() :: binary().
 -type receiver_id() :: integer().
 -type is_payable() :: boolean().
 -type file_data() :: binary().
@@ -86,10 +86,11 @@ mark_file_written(Id) ->
         _ -> error % TODO: Handle gracefully? Alarm?
     end.
 
--spec file_exists(sender_id(), file_name()) -> boolean().
-file_exists(SenderId, FileName) ->
-    SQL = "SELECT id FROM content WHERE sender_id=$1 AND file_name=$2 AND file_written=TRUE",
-    Params = [SenderId, list_to_binary(FileName)],
+-spec file_exists(sender_id(), receiver_id(), file_name()) -> boolean().
+file_exists(SenderId, ReceiverId, FileName) ->
+    SQL = "SELECT id FROM content "
+          "WHERE sender_id=$1 AND receiver_id=$2 AND file_name=$3 AND file_written=TRUE",
+    Params = [SenderId, ReceiverId, FileName],
     case pgapp:equery(?POOL, SQL, Params) of
         {ok, _, []} -> false;
         {ok, _, List} when is_list(List) -> true;
@@ -104,12 +105,13 @@ all_keys() ->
     _ -> []
   end.
 
--spec try_read_id(content_id()) ->                               {ok, #{sender_id := sender_id()
-                                    , file_type := file_type()
-                                    , file_name := file_name()
-                                    , receiver_id := receiver_id()
-                                    , is_payable := is_payable()}} |
-                               none.
+-spec try_read_id(content_id()) -> {ok, #{id := content_id()
+                                        , sender_id := sender_id()
+                                        , file_type := file_type()
+                                        , file_name := file_name()
+                                        , receiver_id := receiver_id()
+                                        , is_payable := is_payable()}} |
+                                   none.
 try_read_id(Id) ->
     SQL = "SELECT id, sender_id, file_type, file_name, receiver_id, is_payable "
           "FROM content "

@@ -55,7 +55,7 @@ acc_multipart(Req, AccMap) ->
                 {file, _FieldName, Filename, _CType} ->
                     handle_multiple_files(AccMap),
                     {Req5, [FileData]} = stream_file(Req2, []),
-                    [Req5, #{file_name => binary_to_list(Filename), file_data => FileData}]
+                    [Req5, #{file_name => Filename, file_data => FileData}]
             end,
             acc_multipart(Req4, maps:merge(AccMap, Map));
         {done, Req2} ->
@@ -108,8 +108,10 @@ valid_call(Result) ->
     maps:is_key(file_name, Result) andalso
     %% TODO: Is any file ok to store?
     maps:is_key(file_data, Result) andalso
-    %% TODO: Should this be allowed? Overwrite or store duplicate files? Based on receiver_id?
-    case persist:file_exists(maps:get(sender_id, Result), maps:get(file_name, Result)) of
+    %% TODO: Should this be allowed? Overwrite or store duplicate files?
+    case persist:file_exists(maps:get(sender_id, Result),
+                             maps:get(receiver_id, Result),
+                             maps:get(file_name, Result)) of
         false -> true;
         true -> false
     end.
