@@ -12,6 +12,7 @@
         , mark_file_written/1
         , store_file/4
         , read_file/3
+        , set_is_paid/1
         ]).
 
 %% Utils
@@ -147,6 +148,13 @@ get_is_payable(ContentId) ->
     {ok, _, [{Bool}]} -> {ok, Bool};
     {ok, _, List} when length(List) > 1 -> {error, multiple_ids};
     _ -> {error, other}
+  end.
+
+-spec set_is_paid(content_id()) -> ok | error.
+set_is_paid(Id) ->
+  case pgapp:equery(?POOL, "UPDATE content SET is_payable=FALSE WHERE id=$1", [Id]) of
+    {ok, Count} when Count =:= 1 -> ok;
+    _ -> error % TODO: Handle gracefully? Alarm?
   end.
 
 -spec get_receiver_ids(sender_id()) -> [{content_id(), receiver_id()}] | none.

@@ -15,9 +15,31 @@ init(Req0 = #{method := <<"GET">>}, State) ->
           end,
     {ok, Req, State};
 init(Req0 = #{method := <<"POST">>}, State) ->
-    io:format("~nPOST Req:~n~p~n", [Req0]),
-    Req = cowboy_req:reply(200, #{}, <<"POST">>, Req0),
+    Req = case cowboy_req:header(<<"content-type">>, Req0) of
+            <<"application/json">> -> handle_is_paid(Req0);
+            _ -> cowboy_req:reply(415, Req0)
+          end,
     {ok, Req, State}.
+
+handle_is_paid(Req0) ->
+    {ok, PostVals, Req1} = cowboy_req:read_body(Req0),
+    PostMap = jsone:decode(PostVals),
+    case valid_post_call(PostMap) of
+      true ->
+        ContentId = binary_to_integer(maps:get(<<"content_id">>, PostMap)),
+        %% TODO: Implement payment-api here
+        ok = persist:set_is_paid(ContentId),
+        Req1;
+      error ->
+        cowboy_req:reply(404, Req1)
+    end.
+
+valid_post_call(PostMap) ->
+  %% TODO: Do we validate if it is already set to is_payable=false, if so where?
+  case maps:find(<<"content_id">>, PostMap) of
+    {ok, ContentId} -> is_integer(binary_to_integer(ContentId));
+    error -> false
+  end.
 
 decide_query_response(Parsed) ->
   case lists:keymember(<<"content_id">>, 1, Parsed) of

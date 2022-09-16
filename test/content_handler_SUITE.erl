@@ -13,6 +13,7 @@
         , query_sender_id/1
         , query_sender_receiver_id/1
         , failed_query/1
+        , set_is_paid/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -24,6 +25,7 @@ all() -> [ query_content_id
          , query_sender_id
          , query_sender_receiver_id
          , failed_query
+         , set_is_paid
          ].
 
 init_per_suite(Config) ->
@@ -121,6 +123,29 @@ failed_query(Config) when is_list(Config) ->
   ?assertEqual(404, element(2, ContentId404)),
   ?assertEqual(404, element(2, SenderId404)),
   ?assertEqual(404, element(2, SenderReceiver404)),
+  ok.
+
+set_is_paid(Config) when is_list(Config) ->
+  ReceiverId = rand:uniform(100), % any integer works
+  FileType = "not_important",
+  FileName = "download.me",
+  SenderId = ensure_unique_sender_id(),
+  IsPayable = true,
+  {ok, ContentId} = persist:add_content(SenderId, FileType, FileName, ReceiverId, IsPayable),
+  ok = persist:mark_file_written(ContentId),
+  {ok, PreUpdate} = persist:try_read_id(ContentId),
+  ?assert(maps:get(is_payable, PreUpdate)),
+  {ok, {Status, _Headers, _Body}} =
+    httpc:request(post,
+                  { "http://localhost:8080/content"
+                  , []
+                  , "application/json"
+                  , "{\"content_id\":\"" ++ integer_to_list(ContentId) ++ "\"}"},
+                  [],
+                  []),
+  {ok, PostUpdate} = persist:try_read_id(ContentId),
+  ?assertEqual(204, element(2, Status)),
+  ?assertNot(maps:get(is_payable, PostUpdate)),
   ok.
 
 ensure_unique_sender_id() -> ensure_unique_sender_id(1).
